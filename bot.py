@@ -6,7 +6,7 @@ from io import BytesIO
 
 import aiohttp
 from flask import Flask, request, Response
-from pymongo import MongoClient
+from pymongo import MongoClient, errors
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
@@ -25,8 +25,8 @@ TMDB_API_KEY    = os.environ["TMDB_API_KEY"]
 MONGO_URI       = os.environ["MONGO_URI"]
 WEBHOOK_URL     = os.environ["WEBHOOK_URL"].rstrip("/")
 
-TMDB_BASE     = "https://api.themoviedb.org/3"
-TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w780"
+TMDB_BASE = "https://api.themoviedb.org/3"
+TMDB_IMG  = "https://image.tmdb.org/t/p/w1280"
 
 # ── MongoDB ─────────────────────────────────────────
 mongo = MongoClient(MONGO_URI)
@@ -57,6 +57,7 @@ def extract_title_year(text: str):
     return title, year
 
 def detect_quality(text: str):
+    text = text.lower()
     for q in ("2160p", "1080p", "720p", "480p"):
         if q in text:
             return q
@@ -75,23 +76,30 @@ async def tmdb_details(session, movie_id):
     async with session.get(f"{TMDB_BASE}/movie/{movie_id}", params=params) as r:
         return await r.json()
 
-async def fetch_poster(session, path):
+async def fetch_image(session, poster, backdrop):
+    path = backdrop or poster  # prefer 16:9
     if not path:
         return None
-    async with session.get(f"{TMDB_IMG_BASE}{path}") as r:
+    async with session.get(f"{TMDB_IMG}{path}") as r:
         return await r.read()
 
-def build_caption(details, quality, username):
+def build_caption(details, quality):
+    title = details.get("title")
+    year = (details.get("release_date") or "")[:4]
+    genres = ", ".join(g["name"] for g in details.get("genres", []))
+    rating = round(details.get("vote_average", 0), 1)
+    lang = details.get("original_language", "").upper()
+
     return f"""
 📥 <b>New #MOVIE Added</b>
 
-✨ <b>TITLE</b> : {details.get("title")} {(details.get("release_date") or "")[:4]}
-
-🎭 <b>GENRES</b> : {", ".join(g["name"] for g in details.get("genres", []))}
-🎞 <b>QUALITY</b> : {quality}
-🔥 <b>RATING</b> : {round(details.get("vote_average", 0),1)}
-
-🔍 @{username}
+<blockquote>
+✨ <b>TITLE :</b> {title} {year}
+🎭 <b>GENRES :</b> {genres}
+📺 <b>QUALITY :</b> {quality}
+🌐 <b>LANG :</b> {lang}
+🔥 <b>RATING :</b> {rating}
+</blockquote>
 """
 
 # ── Handler ─────────────────────────────────────────
@@ -115,18 +123,26 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         tmdb_id = result["id"]
 
-        if posted_col.find_one({"tmdb_id": tmdb_id}):
+        # 🔴 FIX: prevent duplicate (race-safe)
+        try:
+            posted_col.insert_one({"tmdb_id": tmdb_id})
+        except errors.DuplicateKeyError:
+            log.info(f"⏭ Duplicate skipped ({title})")
             return
 
         details = await tmdb_details(session, tmdb_id)
-        poster = await fetch_poster(session, result.get("poster_path"))
+        image = await fetch_image(
+            session,
+            result.get("poster_path"),
+            result.get("backdrop_path")
+        )
 
-    caption = build_caption(details, quality, str(POST_CHANNEL_ID))
+    caption = build_caption(details, quality)
 
-    if poster:
+    if image:
         await context.bot.send_photo(
             chat_id=POST_CHANNEL_ID,
-            photo=BytesIO(poster),
+            photo=BytesIO(image),
             caption=caption,
             parse_mode="HTML"
         )
@@ -136,8 +152,6 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=caption,
             parse_mode="HTML"
         )
-
-    posted_col.insert_one({"tmdb_id": tmdb_id})
 
     log.info(f"Posted {title}")
 
@@ -170,5 +184,4 @@ async def start():
     await tg_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
     log.info("Webhook set ✅")
 
-# Run startup once
 asyncio.run(start())
