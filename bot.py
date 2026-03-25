@@ -302,8 +302,16 @@ def main():
 
     # Flask handles HTTP — Render needs a web process
     log.info(f"Flask listening on 0.0.0.0:{PORT}")
-    flask_app.run(host="0.0.0.0", port=PORT)
+    
 
 
 if __name__ == "__main__":
     main()
+
+if __name__ == "__main__":
+    main()
+    
+# Auto-start for Gunicorn
+else:
+    main()
+
