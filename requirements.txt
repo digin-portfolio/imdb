@@ -1,0 +1,7 @@
+python-telegram-bot==20.7
+aiohttp==3.9.3
+flask==3.0.3
+requests==2.31.0
+gunicorn==21.2.0
+pymongo==4.7.2
+dnspython==2.6.1

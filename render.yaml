@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: movie-card-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false          # you fill this in on the Render dashboard
+      - key: FILE_CHANNEL_ID
+        sync: false
+      - key: POST_CHANNEL_ID
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+      - key: MONGO_URI
+        sync: false          # from MongoDB Atlas → Connect → Drivers
+      - key: WEBHOOK_URL
+        sync: false          # set to https://<your-service-name>.onrender.com
