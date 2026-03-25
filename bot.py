@@ -76,16 +76,13 @@ def health():
     return Response("✅ Bot is running", status=200)
 
 
-@flask_app.post(f"/webhook")
+@flask_app.post("/webhook")
 def webhook():
-    """Receive an update from Telegram and hand it to python-telegram-bot."""
     json_data = request.get_json(force=True)
     update = Update.de_json(json_data, tg_app.bot)
-    # Schedule the update in the bot's event loop
-    asyncio.run_coroutine_threadsafe(
-        tg_app.process_update(update),
-        tg_app.update_queue._loop,  # type: ignore[attr-defined]
-    )
+
+    asyncio.run(tg_app.process_update(update))  # ✅ FIX
+
     return Response("ok", status=200)
 
 
