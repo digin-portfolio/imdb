@@ -42,6 +42,8 @@ app = Flask(__name__)
 # ── Telegram App ─────────────────────────────────────
 tg_app = Application.builder().token(BOT_TOKEN).build()
 
+bot_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(bot_loop)
 # ── Helpers ─────────────────────────────────────────
 
 def extract_title_year(text: str):
@@ -173,7 +175,10 @@ def home():
 @app.post("/webhook")
 def webhook():
     update = Update.de_json(request.get_json(force=True), tg_app.bot)
-    asyncio.run(tg_app.process_update(update))
+    asyncio.run_coroutine_threadsafe(
+    tg_app.process_update(update),
+    bot_loop
+)
     return Response("ok")
 
 # ── Startup ─────────────────────────────────────────
@@ -184,4 +189,4 @@ async def start():
     await tg_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
     log.info("Webhook set ✅")
 
-asyncio.run(start())
+bot_loop.run_until_complete(start())
